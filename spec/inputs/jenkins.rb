@@ -1,6 +1,6 @@
 # encoding: utf-8
 require "logstash/devutils/rspec/spec_helper"
-require "logstash/inputs/example"
+require "logstash/inputs/jenkins"
 
 describe LogStash::Inputs::Example do
 
