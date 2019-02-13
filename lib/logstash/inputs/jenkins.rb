@@ -14,7 +14,7 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
 
   config :host, :validate => :string, :default => "jenkins.liatr.io"
 
-  #config :port, :validate => :number, :default => 8080
+  config :port, :validate => :number, :default => 80
 
   public
 
