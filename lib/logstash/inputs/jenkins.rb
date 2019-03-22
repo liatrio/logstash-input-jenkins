@@ -40,7 +40,14 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
   
   public
   
-  
+  ## QUERY DATA FROM BUILD JOBS BASED ON GIT COMMIT
+  # Make an elasticsearch query based on a git commit (git commits are not 100% guaranteed to be unique but are
+  # extremely unlikely to result in collision) and return an existing document, created by the bitbucket logstash
+  # plugin, based on that git commit id.
+  # arguments:
+  #   client: contains an Elasticsearch client object to make the query calls such as .search
+  #   body_obj: the current JSON body to extrapolate the git commit from
+  # returns: JSON obj containing the document matched
   def get_build_response(client, body_obj)
     commit_id = body_obj['data']['buildVariables']['GIT_COMMIT']
     
@@ -62,6 +69,12 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
     return response
   end
   
+  ## QUERY DATA FOR DEPLOY JOBS FROM ARTIFACT INFORMATION
+  # Make an elasticsearch query based on the artifact information which is created after a job has succeeded
+  # in the build stage.
+  # arguments:
+  #   client: Elasticsearch client
+  #   body_obj: JSON body containing the data for the deployment job
   def get_deploy_response(client, body_obj)
     
     artifact_id = body_obj['data']['buildVariables']['id']
@@ -116,6 +129,11 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
     return response
   end
   
+  ## CREATING THE LEAD-TIME DOCUMENTS
+  # Takes in a JSON body containing all of the logs from a particular build, creates the corresponding needed
+  # documents, and generates the data for Lead-time.
+  # Arguments:
+  #   body: JSON object containing all of the log data from a particular build
   def decode_body(headers, remote_address, body, default_codec, additional_codecs)
     content_type = headers.fetch("content_type", "")
     codec = additional_codecs.fetch(HttpUtil.getMimeType(content_type), default_codec)
@@ -226,11 +244,6 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
       puts "Job is neither a build nor deploy"
     end
     
-    #gg = LogStash::Event.new(body_obj)
-    #gg.set('[@metadata][index]', 'build')
-    #push_decoded_event(headers, remote_address, gg)
-    
-    #codec.decode(body) { |event| push_decoded_event(headers, remote_address, event) }
     codec.flush { |event| push_decoded_event(headers, remote_address, event) }
     true
   rescue => e
