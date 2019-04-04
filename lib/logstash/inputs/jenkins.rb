@@ -8,7 +8,7 @@ require "pp"
 require "date"
 
 # This plugin utilizes Jenkins' Logstash plugin linked here:
-#   https://wiki.jenkins.io/display/JENKINS/Logstash+Plugin
+#   https://wiki.jenkins.io/display/JENKINS/Logstash+Plugi ntssdsff
 # The plugin will interpret the Jenkins logs sent to logstash and interpret them according to
 # our elasticsearch structure. We currently determine whether or not a project built from a repository
 # is a 'build' or 'deploy' job. The plugin then links the a job that has been ran with a corresponding
@@ -22,7 +22,7 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
   # If undefined, Logstash will complain, even if codec is unused.
   default :codec, "json"
   
-  config :host, :validate => :string, :default => "jenkins.liatr.io"
+  config :host, :validate => :string, :default => "jenkins.jx.lead-dev.liatr.io"
   
   config :port, :validate => :number, :default => 80
   
@@ -34,7 +34,7 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
   
   config :elastic_port, :validate => :number, :default => 9200
   
-  config :elastic_host, :validate => :string, :default => '192.168.0.27'
+  config :elastic_host, :validate => :string, :default => '192.168.0.8'
   
   config :elastic_scheme, :validate => :string, :default => 'http'
   
@@ -49,7 +49,7 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
   #   body_obj: the current JSON body to extrapolate the git commit from
   # returns: JSON obj containing the document matched
   def get_build_response(client, body_obj)
-    commit_id = body_obj['data']['buildVariables']['GIT_COMMIT']
+    commit_id = body_obj['gitCommit']
     
     response = client.search index: 'lead_time', body:
       {
@@ -77,9 +77,9 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
   #   body_obj: JSON body containing the data for the deployment job
   def get_deploy_response(client, body_obj)
     
-    artifact_id = body_obj['data']['buildVariables']['id']
-    artifact_group = body_obj['data']['buildVariables']['group']
-    artifact_version = body_obj['data']['buildVariables']['version']
+    artifact_id = body_obj['appName']
+    artifact_group = body_obj['groupID']
+    artifact_version = body_obj['versionNumber']
     
     response = client.search index: 'lead_time', body:
       {
@@ -128,7 +128,7 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
       }
     return response
   end
-  
+
   ## CREATING THE LEAD-TIME DOCUMENTS
   # Takes in a JSON body containing all of the logs from a particular build, creates the corresponding needed
   # documents, and generates the data for Lead-time.
@@ -137,14 +137,12 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
   def decode_body(headers, remote_address, body, default_codec, additional_codecs)
     content_type = headers.fetch("content_type", "")
     codec = additional_codecs.fetch(HttpUtil.getMimeType(content_type), default_codec)
-    
     client = Elasticsearch::Client.new(:hosts => "#{@elastic_scheme}://#{@elastic_host}:#{@elastic_port}")
-    
     #decode the body to get the relevant info we want from JSON from jenkins
     body_obj = JSON.parse(body)
-    
+
     # Iterate through the jenkins' logs to access all of the fields we need
-    if body_obj['data']['buildVariables']['TYPE'] == "deploy"
+    if body_obj['jobType'] == "deploy"
       
       #client.search utilizes the elasticsearch ruby library to send a query to elasticsearch from the logstash plugin
       lt_response = get_deploy_response(client, body_obj)
@@ -161,16 +159,15 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
         #Using the DateTime library, we retrieve the times from the lead-time documents, convert them to epoch format, then converted to an integer
         start_date = DateTime.parse(lead_time_document["started_at"]).to_time.to_i
         create_date = DateTime.parse(lead_time_document["created_at"]).to_time.to_i
-        finish_date = DateTime.parse(body_obj['@buildTimestamp']).to_time.to_i
+        finish_date = DateTime.parse(body_obj['@timestamp']).to_time.to_i
         
         total_time = finish_date - start_date
         progress_time = finish_date - create_date
         
         lead_time_document["deploys"].push(
           {
-            environment: body_obj['data']['buildVariables']['ENV'],
-            result: body_obj['data']['result'],
-            completed_at: body_obj['@buildTimestamp'],
+            result: body_obj['state'],
+            completed_at: body_obj['@timestamp'],
             total_time: total_time,
             progress_time: progress_time,
           }
@@ -181,17 +178,8 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
             total_time: total_time,
             progress_time: progress_time
           }
-        if body_obj['data']['buildVariables']['ENV'] == "prod"
-          lead_time_document["prod"] = time_obj
-        elsif body_obj['data']['buildVariables']['ENV'] == "qa"
-          lead_time_document["qa"] = time_obj
-        elsif body_obj['data']['buildVariables']['ENV'] == "dev"
-          lead_time_document["dev"] = time_obj
-        else
-          puts "other env"
-        end
         
-        if body_obj['data']['result'] == 'SUCCESS'
+        if body_obj['state'] == 'healthy'
           lead = LogStash::Event.new(lead_time_document)
           lead.set('[@metadata][index]', 'lead_time')
           lead.set('[@metadata][id]', hit['_id'])
@@ -199,10 +187,8 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
         end
       end
     
-    elsif body_obj['data']['buildVariables']['TYPE'] == nil
-      if body_obj['data']['buildVariables']['POM_GROUPID'] != nil &&
-        body_obj['data']['buildVariables']['POM_ARTIFACTID'] != nil &&
-        body_obj['data']['buildVariables']['POM_VERSION'] != nil
+    elsif body_obj['jobType'] == nil
+      if body_obj['groupID'] != nil && body_obj['appName'] != nil && body_obj['versionNumber'] != nil
         
         lt_response = get_build_response(client, body_obj)
         builds = []
@@ -219,18 +205,17 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
             {
               artifact:
                 {
-                  id: body_obj['data']['buildVariables']['POM_ARTIFACTID'],
-                  group: body_obj['data']['buildVariables']['POM_GROUPID'],
-                  name: body_obj['data']['buildVariables']['JOB_NAME'],
-                  version: body_obj['data']['buildVariables']['POM_VERSION'],
-                  packaging: body_obj['data']['buildVariables']['POM_PACKAGING']
+                  id: body_obj['appName'],
+                  group: body_obj['groupID'],
+                  name: body_obj['appName'],
+                  version: body_obj['versionNumber'],
                 },
-              result: body_obj['data']['result'],
-              built_at: body_obj['@buildTimestamp']
+              result: body_obj['state'],
+              built_at: body_obj['@timestamp']
             }
           )
-          
-          if body_obj['data']['result'] == 'SUCCESS'
+
+          if body_obj['state'] == 'healthy'
             lead = LogStash::Event.new(lead_time_document)
             lead.set('[@metadata][index]', 'lead_time')
             lead.set('[@metadata][id]', hit['_id'])
