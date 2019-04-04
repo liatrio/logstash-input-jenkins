@@ -8,7 +8,7 @@ require "pp"
 require "date"
 
 # This plugin utilizes Jenkins' Logstash plugin linked here:
-#   https://wiki.jenkins.io/display/JENKINS/Logstash+Plugi ntssdsff
+#   https://wiki.jenkins.io/display/JENKINS/Logstash+Plugin
 # The plugin will interpret the Jenkins logs sent to logstash and interpret them according to
 # our elasticsearch structure. We currently determine whether or not a project built from a repository
 # is a 'build' or 'deploy' job. The plugin then links the a job that has been ran with a corresponding
