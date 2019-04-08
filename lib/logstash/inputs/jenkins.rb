@@ -35,7 +35,7 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
   config :elastic_port, :validate => :number, :default => 9200
   
   config :elastic_host, :validate => :string, :required => true
-  
+ 
   config :elastic_scheme, :validate => :string, :default => 'http'
   
   public
