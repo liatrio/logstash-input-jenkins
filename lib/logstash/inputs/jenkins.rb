@@ -22,7 +22,7 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
   # If undefined, Logstash will complain, even if codec is unused.
   default :codec, "json"
   
-  config :host, :validate => :string
+  config :host, :validate => :string, :required => true
 
   config :port, :validate => :number, :default => 80
   
@@ -34,7 +34,7 @@ class LogStash::Inputs::Jenkins < LogStash::Inputs::Http
   
   config :elastic_port, :validate => :number, :default => 9200
   
-  config :elastic_host, :validate => :string
+  config :elastic_host, :validate => :string, :required => true
   
   config :elastic_scheme, :validate => :string, :default => 'http'
   
