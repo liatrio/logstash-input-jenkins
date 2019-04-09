@@ -6,6 +6,7 @@ RUN yum update -y
 
 USER logstash
 ENV PATH=$PATH:/usr/share/logstash/vendor/jruby/bin/
+ENV XPACK_MONITORING_ENABLED=false
 RUN gem install bundler
 
 COPY --chown=logstash:logstash . /usr/share/logstash/plugins/logstash-input-jenkins
